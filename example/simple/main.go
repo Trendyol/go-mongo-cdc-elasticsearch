@@ -3,9 +3,9 @@ package main
 import (
 	"context"
 
-	cdcelasticsearch "gitlab.trendyol.com/order/coex/go-mongo-cdc-elasticsearch"
-	"gitlab.trendyol.com/order/coex/go-mongo-cdc-elasticsearch/elasticsearch/document"
-	"gitlab.trendyol.com/order/coex/go-mongo-cdc-elasticsearch/mongodb"
+	cdcelasticsearch "github.com/Trendyol/go-mongo-cdc-elasticsearch"
+	"github.com/Trendyol/go-mongo-cdc-elasticsearch/elasticsearch/document"
+	"github.com/Trendyol/go-mongo-cdc-elasticsearch/mongodb"
 )
 
 func mapper(event mongodb.Event) []document.ESActionDocument {

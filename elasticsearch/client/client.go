@@ -1,8 +1,8 @@
 package client
 
 import (
-	"gitlab.trendyol.com/order/coex/go-mongo-cdc-elasticsearch/config"
-	"gitlab.trendyol.com/order/coex/poc/go-mongo-cdc-poc/logger"
+	"github.com/Trendyol/go-mongo-cdc-elasticsearch/config"
+	"github.com/Trendyol/go-mongo-cdc/logger"
 
 	"github.com/elastic/go-elasticsearch/v7"
 )

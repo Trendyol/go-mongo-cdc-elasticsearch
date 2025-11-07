@@ -4,11 +4,11 @@ import (
 	"context"
 	"time"
 
-	cdcelasticsearch "gitlab.trendyol.com/order/coex/go-mongo-cdc-elasticsearch"
-	"gitlab.trendyol.com/order/coex/go-mongo-cdc-elasticsearch/config"
-	"gitlab.trendyol.com/order/coex/go-mongo-cdc-elasticsearch/elasticsearch/document"
-	"gitlab.trendyol.com/order/coex/go-mongo-cdc-elasticsearch/mongodb"
-	cdcConfig "gitlab.trendyol.com/order/coex/poc/go-mongo-cdc-poc/config"
+	cdcelasticsearch "github.com/Trendyol/go-mongo-cdc-elasticsearch"
+	"github.com/Trendyol/go-mongo-cdc-elasticsearch/config"
+	"github.com/Trendyol/go-mongo-cdc-elasticsearch/elasticsearch/document"
+	"github.com/Trendyol/go-mongo-cdc-elasticsearch/mongodb"
+	cdcConfig "github.com/Trendyol/go-mongo-cdc/config"
 )
 
 func mapper(event mongodb.Event) []document.ESActionDocument {

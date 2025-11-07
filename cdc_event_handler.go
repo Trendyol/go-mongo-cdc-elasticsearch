@@ -1,7 +1,7 @@
 package cdcelasticsearch
 
 import (
-	"gitlab.trendyol.com/order/coex/go-mongo-cdc-elasticsearch/elasticsearch/bulk"
+	"github.com/Trendyol/go-mongo-cdc-elasticsearch/elasticsearch/bulk"
 )
 
 type CDCEventHandler struct {

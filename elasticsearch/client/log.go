@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"gitlab.trendyol.com/order/coex/poc/go-mongo-cdc-poc/logger"
+	"github.com/Trendyol/go-mongo-cdc/logger"
 )
 
 type LoggerAdapter struct {

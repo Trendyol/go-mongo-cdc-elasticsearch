@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 
-	cdcelasticsearch "gitlab.trendyol.com/order/coex/go-mongo-cdc-elasticsearch"
+	cdcelasticsearch "github.com/Trendyol/go-mongo-cdc-elasticsearch"
 )
 
 func main() {

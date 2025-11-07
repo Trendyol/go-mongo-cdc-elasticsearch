@@ -10,11 +10,11 @@ import (
 	"sync"
 	"time"
 
-	"gitlab.trendyol.com/order/coex/go-mongo-cdc-elasticsearch/config"
-	"gitlab.trendyol.com/order/coex/go-mongo-cdc-elasticsearch/elasticsearch"
-	"gitlab.trendyol.com/order/coex/go-mongo-cdc-elasticsearch/elasticsearch/document"
-	"gitlab.trendyol.com/order/coex/go-mongo-cdc-elasticsearch/helper"
-	"gitlab.trendyol.com/order/coex/poc/go-mongo-cdc-poc/logger"
+	"github.com/Trendyol/go-mongo-cdc-elasticsearch/config"
+	"github.com/Trendyol/go-mongo-cdc-elasticsearch/elasticsearch"
+	"github.com/Trendyol/go-mongo-cdc-elasticsearch/elasticsearch/document"
+	"github.com/Trendyol/go-mongo-cdc-elasticsearch/helper"
+	"github.com/Trendyol/go-mongo-cdc/logger"
 	"golang.org/x/sync/errgroup"
 
 	esClient "github.com/elastic/go-elasticsearch/v7"

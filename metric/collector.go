@@ -1,8 +1,8 @@
 package metric
 
 import (
+	"github.com/Trendyol/go-mongo-cdc-elasticsearch/elasticsearch/bulk"
 	"github.com/prometheus/client_golang/prometheus"
-	"gitlab.trendyol.com/order/coex/go-mongo-cdc-elasticsearch/elasticsearch/bulk"
 )
 
 const Name = "go_mongo_cdc_elasticsearch"

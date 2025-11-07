@@ -3,9 +3,9 @@ package elasticsearch
 import (
 	"bytes"
 	"context"
-	"gitlab.trendyol.com/order/coex/poc/go-mongo-cdc-poc/logger"
-
+	"github.com/Trendyol/go-mongo-cdc/logger"
 	"github.com/elastic/go-elasticsearch/v7"
+
 	"github.com/elastic/go-elasticsearch/v7/esapi"
 	jsoniter "github.com/json-iterator/go"
 )

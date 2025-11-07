@@ -4,7 +4,7 @@ import (
 	"math"
 	"time"
 
-	cdcConfig "gitlab.trendyol.com/order/coex/poc/go-mongo-cdc-poc/config"
+	cdcConfig "github.com/Trendyol/go-mongo-cdc/config"
 )
 
 type Elasticsearch struct {

@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"gitlab.trendyol.com/order/coex/go-mongo-cdc-elasticsearch/config"
+	"github.com/Trendyol/go-mongo-cdc-elasticsearch/config"
 
 	"github.com/valyala/fasthttp"
 )

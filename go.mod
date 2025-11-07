@@ -1,13 +1,13 @@
-module gitlab.trendyol.com/order/coex/go-mongo-cdc-elasticsearch
+module github.com/Trendyol/go-mongo-cdc-elasticsearch
 
-go 1.24.2
+go 1.25.1
 
 require (
+	github.com/Trendyol/go-mongo-cdc v0.0.0-20251103175854-f5598df57ded
 	github.com/elastic/go-elasticsearch/v7 v7.17.10
 	github.com/json-iterator/go v1.1.12
 	github.com/prometheus/client_golang v1.22.0
 	github.com/valyala/fasthttp v1.64.0
-	gitlab.trendyol.com/order/coex/poc/go-mongo-cdc-poc v0.0.0
 	go.mongodb.org/mongo-driver v1.17.4
 	golang.org/x/sync v0.16.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -40,5 +40,3 @@ require (
 	google.golang.org/protobuf v1.36.5 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
-
-replace gitlab.trendyol.com/order/coex/poc/go-mongo-cdc-poc => ../go-mongo-cdc-poc

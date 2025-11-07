@@ -1,9 +1,9 @@
 package elasticsearch
 
 import (
+	"github.com/Trendyol/go-mongo-cdc-elasticsearch/config"
+	"github.com/Trendyol/go-mongo-cdc-elasticsearch/elasticsearch/document"
 	"github.com/elastic/go-elasticsearch/v7"
-	"gitlab.trendyol.com/order/coex/go-mongo-cdc-elasticsearch/config"
-	"gitlab.trendyol.com/order/coex/go-mongo-cdc-elasticsearch/elasticsearch/document"
 )
 
 type SinkResponseHandlerContext struct {

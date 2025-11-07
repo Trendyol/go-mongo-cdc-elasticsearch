@@ -15,22 +15,22 @@ import (
 
 	jsoniter "github.com/json-iterator/go"
 
-	cdc "gitlab.trendyol.com/order/coex/poc/go-mongo-cdc-poc"
-	cdcConfig "gitlab.trendyol.com/order/coex/poc/go-mongo-cdc-poc/config"
-	"gitlab.trendyol.com/order/coex/poc/go-mongo-cdc-poc/logger"
-	"gitlab.trendyol.com/order/coex/poc/go-mongo-cdc-poc/mongo/message"
-	"gitlab.trendyol.com/order/coex/poc/go-mongo-cdc-poc/stream"
+	cdc "github.com/Trendyol/go-mongo-cdc"
+	cdcConfig "github.com/Trendyol/go-mongo-cdc/config"
+	"github.com/Trendyol/go-mongo-cdc/logger"
+	"github.com/Trendyol/go-mongo-cdc/mongo/message"
+	"github.com/Trendyol/go-mongo-cdc/stream"
 
 	esClient "github.com/elastic/go-elasticsearch/v7"
 	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/yaml.v3"
 
-	"gitlab.trendyol.com/order/coex/go-mongo-cdc-elasticsearch/config"
-	"gitlab.trendyol.com/order/coex/go-mongo-cdc-elasticsearch/elasticsearch"
-	"gitlab.trendyol.com/order/coex/go-mongo-cdc-elasticsearch/elasticsearch/bulk"
-	"gitlab.trendyol.com/order/coex/go-mongo-cdc-elasticsearch/elasticsearch/client"
-	"gitlab.trendyol.com/order/coex/go-mongo-cdc-elasticsearch/metric"
-	"gitlab.trendyol.com/order/coex/go-mongo-cdc-elasticsearch/mongodb"
+	"github.com/Trendyol/go-mongo-cdc-elasticsearch/config"
+	"github.com/Trendyol/go-mongo-cdc-elasticsearch/elasticsearch"
+	"github.com/Trendyol/go-mongo-cdc-elasticsearch/elasticsearch/bulk"
+	"github.com/Trendyol/go-mongo-cdc-elasticsearch/elasticsearch/client"
+	"github.com/Trendyol/go-mongo-cdc-elasticsearch/metric"
+	"github.com/Trendyol/go-mongo-cdc-elasticsearch/mongodb"
 )
 
 type Connector interface {
