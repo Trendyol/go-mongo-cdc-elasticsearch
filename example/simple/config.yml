@@ -1,0 +1,51 @@
+mongodb:
+  connection:
+    uri: "localhost:27017"
+    database: "exampleDB"
+    collection: "exampleCollection"
+    username: ""
+    password: ""
+  connectionPool:
+    maxPoolSize: 100
+    minPoolSize: 5
+    maxIdleTimeMS: 300000
+  timeouts:
+    connectTimeoutMS: 30000
+    serverSelectionTimeoutMS: 60000
+    socketTimeoutMS: 120000
+
+elasticsearch:
+  collectionIndexMapping:
+    exampleCollection: "example-collection"
+  urls:
+    - "http://localhost:9200"
+  username: ""
+  password: ""
+  batchSizeLimit: 1000
+  batchTickerDuration: 10s
+  batchByteSizeLimit: 10mb
+  concurrentRequest: 1
+  compressionEnabled: false
+  disableDiscoverNodesOnStart: false
+  maxRetries: 3
+
+metric:
+  port: 8080
+  collectionInterval: 30s
+
+checkpoint:
+  changeStreamBatchSize: 3000
+
+partition:
+  heartbeatInterval: 10s
+  workerTimeout: 90s
+  workersCollection: "workers"
+  partitionsCollection: "partition_assignments"
+  rebalanceCheckInterval: 15s
+  totalPartition: 5
+
+logger:
+  logLevel: "info"
+
+gracefulShutdownTimeout: 30s
+

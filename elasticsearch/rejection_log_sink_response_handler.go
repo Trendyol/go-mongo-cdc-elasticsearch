@@ -1,0 +1,92 @@
+package elasticsearch
+
+import (
+	"bytes"
+	"context"
+	"gitlab.trendyol.com/order/coex/poc/go-mongo-cdc-poc/logger"
+
+	"github.com/elastic/go-elasticsearch/v7"
+	"github.com/elastic/go-elasticsearch/v7/esapi"
+	jsoniter "github.com/json-iterator/go"
+)
+
+type RejectionLogSinkResponseHandler struct {
+	client        *elasticsearch.Client
+	index         string
+	includeSource bool
+}
+
+func NewRejectionLogSinkResponseHandler() *RejectionLogSinkResponseHandler {
+	return &RejectionLogSinkResponseHandler{}
+}
+
+func (r *RejectionLogSinkResponseHandler) OnInit(ctx *SinkResponseHandlerInitContext) {
+	r.client = ctx.ElasticsearchClient
+	r.index = ctx.Config.Elasticsearch.RejectionLog.Index
+	r.includeSource = ctx.Config.Elasticsearch.RejectionLog.IncludeSource
+
+	if r.index == "" {
+		r.index = "cbes-rejects"
+	}
+
+	if r.checkNotIndicesExists() {
+		_, err := esapi.IndicesCreateRequest{Index: r.index}.Do(context.Background(), r.client)
+		if err != nil {
+			logger.Log.Error("error while rejection log index create request, err: %v", err)
+			panic(err)
+		}
+	}
+}
+
+func (r *RejectionLogSinkResponseHandler) checkNotIndicesExists() bool {
+	resp, err := esapi.IndicesExistsRequest{
+		Index: []string{r.index},
+	}.Do(context.Background(), r.client)
+	if err != nil {
+		logger.Log.Error("error while rejection log index exist request, err: %v", err)
+		panic(err)
+	}
+	return resp.StatusCode == 404
+}
+
+func (r *RejectionLogSinkResponseHandler) OnSuccess(ctx *SinkResponseHandlerContext) {
+}
+
+func (r *RejectionLogSinkResponseHandler) OnError(ctx *SinkResponseHandlerContext) {
+	rejectionLog := RejectionLog{
+		Index:      ctx.Action.IndexName,
+		DocumentID: ctx.Action.ID,
+		Action:     string(ctx.Action.Type),
+		Error:      ctx.Err.Error(),
+	}
+
+	if r.includeSource {
+		rejectionLog.Source = string(ctx.Action.Source)
+	}
+
+	rejectionLogBytes, err := jsoniter.Marshal(rejectionLog)
+	if err != nil {
+		logger.Log.Error("error while rejection log marshal, err: %v", err)
+		panic(err)
+	}
+
+	req := esapi.IndexRequest{
+		Index:   r.index,
+		Body:    bytes.NewReader(rejectionLogBytes),
+		Refresh: "false",
+	}
+
+	_, err = req.Do(context.Background(), r.client)
+	if err != nil {
+		logger.Log.Error("error while rejection log write, err: %v", err)
+		panic(err)
+	}
+}
+
+type RejectionLog struct {
+	Index      string
+	Action     string
+	Error      string
+	Source     string
+	DocumentID []byte
+}

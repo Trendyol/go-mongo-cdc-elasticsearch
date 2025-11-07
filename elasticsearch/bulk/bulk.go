@@ -1,0 +1,560 @@
+package bulk
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"strings"
+	"sync"
+	"time"
+
+	"gitlab.trendyol.com/order/coex/go-mongo-cdc-elasticsearch/config"
+	"gitlab.trendyol.com/order/coex/go-mongo-cdc-elasticsearch/elasticsearch"
+	"gitlab.trendyol.com/order/coex/go-mongo-cdc-elasticsearch/elasticsearch/document"
+	"gitlab.trendyol.com/order/coex/go-mongo-cdc-elasticsearch/helper"
+	"gitlab.trendyol.com/order/coex/poc/go-mongo-cdc-poc/logger"
+	"golang.org/x/sync/errgroup"
+
+	esClient "github.com/elastic/go-elasticsearch/v7"
+	"github.com/elastic/go-elasticsearch/v7/esapi"
+	jsoniter "github.com/json-iterator/go"
+)
+
+type Bulk struct {
+	sinkResponseHandler          elasticsearch.SinkResponseHandler
+	metric                       *Metric
+	collectionIndexMapping       map[string]string
+	config                       *config.Config
+	batchKeys                    map[string]int
+	cdcCheckpointCommit          func()
+	cdcCheckpointCommitBootstrap func(partitionID int)
+	batchTicker                  *time.Ticker
+	batchCommitTicker            *time.Ticker
+	isClosed                     chan bool
+	esClient                     *esClient.Client
+	readers                      []*helper.MultiDimByteReader
+	typeName                     []byte
+	batch                        []BatchItem
+	batchIndex                   int
+	batchSize                    int
+	batchSizeLimit               int
+	batchTickerDuration          time.Duration
+	batchByteSizeLimit           int
+	batchByteSize                int
+	concurrentRequest            int
+	flushLock                    sync.Mutex
+	metricCounterMutex           sync.Mutex
+	isCDCRebalancing             bool
+}
+
+type Metric struct {
+	IndexingSuccessActionCounter map[string]int64
+	IndexingErrorActionCounter   map[string]int64
+	DeletionSuccessActionCounter map[string]int64
+	DeletionErrorActionCounter   map[string]int64
+	ProcessLatencyMs             int64
+	BulkRequestProcessLatencyMs  int64
+}
+
+type BatchItem struct {
+	Action      *document.ESActionDocument
+	Bytes       []byte
+	Ack         func()
+	PartitionID int
+	IsBootstrap bool
+}
+
+func NewBulk(
+	config *config.Config,
+	cdcCheckpointCommit func(),
+	cdcCheckpointCommitBootstrap func(partitionID int),
+	esClient *esClient.Client,
+	sinkResponseHandler elasticsearch.SinkResponseHandler,
+) (*Bulk, error) {
+	readers := make([]*helper.MultiDimByteReader, config.Elasticsearch.ConcurrentRequest)
+	for i := 0; i < config.Elasticsearch.ConcurrentRequest; i++ {
+		readers[i] = helper.NewMultiDimByteReader(nil)
+	}
+
+	bulk := &Bulk{
+		batchTickerDuration:          config.Elasticsearch.BatchTickerDuration,
+		batchTicker:                  time.NewTicker(config.Elasticsearch.BatchTickerDuration),
+		batchSizeLimit:               config.Elasticsearch.BatchSizeLimit,
+		batchByteSizeLimit:           helper.ResolveUnionIntOrStringValue(config.Elasticsearch.BatchByteSizeLimit),
+		isClosed:                     make(chan bool, 1),
+		cdcCheckpointCommit:          cdcCheckpointCommit,
+		cdcCheckpointCommitBootstrap: cdcCheckpointCommitBootstrap,
+		esClient:                     esClient,
+		metric: &Metric{
+			IndexingSuccessActionCounter: make(map[string]int64),
+			IndexingErrorActionCounter:   make(map[string]int64),
+			DeletionSuccessActionCounter: make(map[string]int64),
+			DeletionErrorActionCounter:   make(map[string]int64),
+		},
+		collectionIndexMapping: config.Elasticsearch.CollectionIndexMapping,
+		config:                 config,
+		typeName:               helper.Byte(config.Elasticsearch.TypeName),
+		readers:                readers,
+		concurrentRequest:      config.Elasticsearch.ConcurrentRequest,
+		batchKeys:              make(map[string]int, config.Elasticsearch.BatchSizeLimit),
+		sinkResponseHandler:    sinkResponseHandler,
+	}
+
+	if config.Elasticsearch.BatchCommitTickerDuration != nil {
+		bulk.batchCommitTicker = time.NewTicker(*config.Elasticsearch.BatchCommitTickerDuration)
+	}
+
+	if sinkResponseHandler != nil {
+		sinkResponseHandler.OnInit(&elasticsearch.SinkResponseHandlerInitContext{
+			Config:              config,
+			ElasticsearchClient: esClient,
+		})
+	}
+
+	return bulk, nil
+}
+
+func (b *Bulk) StartBulk() {
+	for range b.batchTicker.C {
+		b.flushMessages()
+	}
+}
+
+func (b *Bulk) PrepareStartRebalancing() {
+	b.flushLock.Lock()
+	defer b.flushLock.Unlock()
+
+	b.isCDCRebalancing = true
+	b.batch = b.batch[:0]
+	b.batchKeys = make(map[string]int, b.batchSizeLimit)
+	b.batchIndex = 0
+	b.batchSize = 0
+	b.batchByteSize = 0
+}
+
+func (b *Bulk) PrepareEndRebalancing() {
+	b.flushLock.Lock()
+	defer b.flushLock.Unlock()
+
+	b.isCDCRebalancing = false
+}
+
+func (b *Bulk) AddActions(
+	eventTime time.Time,
+	actions []document.ESActionDocument,
+	collectionName string,
+	ack func(),
+	partitionID int,
+	isBootstrap bool,
+) {
+	b.flushLock.Lock()
+	if b.isCDCRebalancing {
+		logger.Log.Warn("could not add new message to batch while rebalancing")
+		b.flushLock.Unlock()
+		return
+	}
+	for i, action := range actions {
+		indexName := b.getIndexName(collectionName, action.IndexName)
+		actions[i].IndexName = indexName
+		value := getEsActionJSON(
+			action.ID,
+			action.Type,
+			actions[i].IndexName,
+			action.Routing,
+			action.Source,
+			b.typeName,
+		)
+
+		key := getActionKey(actions[i])
+		if batchIndex, ok := b.batchKeys[key]; ok {
+			b.batchByteSize += len(value) - len(b.batch[batchIndex].Bytes)
+			b.batch[batchIndex] = BatchItem{
+				Action:      &actions[i],
+				Bytes:       value,
+				Ack:         ack,
+				PartitionID: partitionID,
+				IsBootstrap: isBootstrap,
+			}
+		} else {
+			b.batch = append(b.batch, BatchItem{
+				Action:      &actions[i],
+				Bytes:       value,
+				Ack:         ack,
+				PartitionID: partitionID,
+				IsBootstrap: isBootstrap,
+			})
+			b.batchKeys[key] = b.batchIndex
+			b.batchIndex++
+			b.batchSize++
+			b.batchByteSize += len(value)
+		}
+	}
+
+	b.flushLock.Unlock()
+
+	b.metric.ProcessLatencyMs = time.Since(eventTime).Milliseconds()
+
+	if b.batchSize >= b.batchSizeLimit || b.batchByteSize >= b.batchByteSizeLimit {
+		b.flushMessages()
+	}
+}
+
+var (
+	indexPrefix       = helper.Byte(`{"index":{"_index":"`)
+	deletePrefix      = helper.Byte(`{"delete":{"_index":"`)
+	updatePrefix      = helper.Byte(`{"update":{"_index":"`)
+	scriptPrefix      = helper.Byte(`{"script":`)
+	idPrefix          = helper.Byte(`","_id":"`)
+	typePrefix        = helper.Byte(`","_type":"`)
+	routingPrefix     = helper.Byte(`","routing":"`)
+	postFix           = helper.Byte(`"}}`)
+	scriptPostfix     = helper.Byte(`,"scripted_upsert":true}`)
+	updateDocTemplate = `{"doc":%s, "doc_as_upsert":true}`
+)
+
+var metaPool = sync.Pool{
+	New: func() interface{} {
+		return []byte{}
+	},
+}
+
+func getEsActionJSON(docID []byte, action document.EsAction, indexName string, routing *string, source []byte, typeName []byte) []byte {
+	meta := metaPool.Get().([]byte)[:0]
+
+	switch action {
+	case document.Index:
+		meta = append(meta, indexPrefix...)
+	case document.DocUpdate, document.ScriptUpdate:
+		meta = append(meta, updatePrefix...)
+	case document.Delete:
+		meta = append(meta, deletePrefix...)
+	}
+
+	meta = append(meta, helper.Byte(indexName)...)
+	meta = append(meta, idPrefix...)
+	meta = append(meta, helper.EscapePredefinedBytes(docID)...)
+	if routing != nil {
+		meta = append(meta, routingPrefix...)
+		meta = append(meta, helper.Byte(*routing)...)
+	}
+	if typeName != nil {
+		meta = append(meta, typePrefix...)
+		meta = append(meta, typeName...)
+	}
+	meta = append(meta, postFix...)
+
+	switch action {
+	case document.Index:
+		meta = append(meta, '\n')
+		meta = append(meta, source...)
+	case document.DocUpdate:
+		meta = append(meta, '\n')
+		meta = append(meta, []byte(fmt.Sprintf(updateDocTemplate, source))...)
+	case document.ScriptUpdate:
+		meta = append(meta, '\n')
+		meta = append(meta, scriptPrefix...)
+		meta = append(meta, source...)
+		meta = append(meta, scriptPostfix...)
+	case document.Delete:
+	}
+
+	meta = append(meta, '\n')
+	return meta
+}
+
+func (b *Bulk) Close() {
+	b.batchTicker.Stop()
+	if b.batchCommitTicker != nil {
+		b.batchCommitTicker.Stop()
+	}
+
+	b.flushMessages()
+}
+
+func (b *Bulk) flushMessages() {
+	b.flushLock.Lock()
+	defer b.flushLock.Unlock()
+	if b.isCDCRebalancing {
+		return
+	}
+	if len(b.batch) > 0 {
+		err := b.bulkRequest()
+		if err != nil && b.sinkResponseHandler == nil {
+			logger.Log.Error("error while bulk request, err: %v", err)
+			panic(err)
+		}
+
+		b.batchTicker.Reset(b.batchTickerDuration)
+
+		bootstrapPartitions := make(map[int]bool)
+		for _, batch := range b.batch {
+			if batch.IsBootstrap {
+				bootstrapPartitions[batch.PartitionID] = true
+			}
+
+			metaPool.Put(batch.Bytes)
+		}
+
+		b.batch = b.batch[:0]
+		b.batchKeys = make(map[string]int, b.batchSizeLimit)
+		b.batchIndex = 0
+		b.batchSize = 0
+		b.batchByteSize = 0
+
+		b.CheckAndCommit(bootstrapPartitions)
+	} else {
+		b.CheckAndCommit(nil)
+	}
+}
+
+func (b *Bulk) CheckAndCommit(bootstrapPartitions map[int]bool) {
+	if b.batchCommitTicker == nil {
+		b.cdcCheckpointCommit()
+		b.commitBootstrapCheckpoints(bootstrapPartitions)
+		return
+	}
+
+	select {
+	case <-b.batchCommitTicker.C:
+		b.cdcCheckpointCommit()
+		b.commitBootstrapCheckpoints(bootstrapPartitions)
+	default:
+		return
+	}
+}
+
+func (b *Bulk) commitBootstrapCheckpoints(bootstrapPartitions map[int]bool) {
+	if bootstrapPartitions == nil {
+		return
+	}
+
+	for partitionID := range bootstrapPartitions {
+		b.cdcCheckpointCommitBootstrap(partitionID)
+	}
+}
+
+func (b *Bulk) requestFunc(concurrentRequestIndex int, batchItems []BatchItem) func() error {
+	return func() error {
+		reader := b.readers[concurrentRequestIndex]
+		actionsOfBatchItems := getActions(batchItems)
+		batchItemBytes := getBytes(batchItems)
+		reader.Reset(batchItemBytes)
+
+		for attempt := 1; attempt <= b.config.Elasticsearch.MaxRetries; attempt++ {
+			r, err := b.esClient.Bulk(reader)
+			if err != nil {
+				if errors.Is(err, io.ErrUnexpectedEOF) {
+					logger.Log.Warn(fmt.Sprintf("unexpected eof error in attempt: %d", attempt))
+					if attempt != b.config.Elasticsearch.MaxRetries {
+						reader.ResetPositions()
+						continue
+					}
+				}
+
+				b.finalizeProcess(batchItems, fillErrorDataWithBulkRequestError(actionsOfBatchItems, err))
+				return err
+			}
+
+			errorData, err := hasResponseError(r)
+			b.finalizeProcess(batchItems, errorData)
+			if err != nil {
+				return err
+			}
+			return nil
+		}
+
+		return fmt.Errorf("max retry cannot be 0")
+	}
+}
+
+func (b *Bulk) bulkRequest() error {
+	eg, _ := errgroup.WithContext(context.Background())
+
+	chunks := helper.ChunkSlice(b.batch, b.concurrentRequest)
+
+	startedTime := time.Now()
+
+	for i, chunk := range chunks {
+		if len(chunk) > 0 {
+			eg.Go(b.requestFunc(i, chunk))
+		}
+	}
+
+	err := eg.Wait()
+
+	b.metric.BulkRequestProcessLatencyMs = time.Since(startedTime).Milliseconds()
+
+	return err
+}
+
+func (b *Bulk) GetMetric() *Metric {
+	return b.metric
+}
+
+func hasResponseError(r *esapi.Response) (map[string]string, error) {
+	if r == nil {
+		return nil, fmt.Errorf("esapi response is nil")
+	}
+	if r.IsError() {
+		return nil, fmt.Errorf("bulk request has error %v", r.String())
+	}
+	rb := new(bytes.Buffer)
+
+	defer r.Body.Close()
+	_, err := rb.ReadFrom(r.Body)
+	if err != nil {
+		return nil, err
+	}
+	b := make(map[string]any)
+	err = jsoniter.Unmarshal(rb.Bytes(), &b)
+	if err != nil {
+		return nil, err
+	}
+	hasError, ok := b["errors"].(bool)
+	if !ok || !hasError {
+		return nil, nil
+	}
+	return joinErrors(b)
+}
+
+func joinErrors(body map[string]any) (map[string]string, error) {
+	var sb strings.Builder
+	ivd := make(map[string]string)
+	sb.WriteString("bulk request has error. Errors will be listed below:\n")
+
+	items, ok := body["items"].([]any)
+	if !ok {
+		return nil, nil
+	}
+
+	for _, i := range items {
+		item, ok := i.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		for _, v := range item {
+			iv, ok := v.(map[string]any)
+			if !ok {
+				continue
+			}
+
+			if iv["error"] != nil {
+				itemValue := fmt.Sprintf("%v\n", i)
+				sb.WriteString(itemValue)
+				itemValueDataKey := fmt.Sprintf("%s:%s", iv["_id"].(string), iv["_index"].(string))
+				ivd[itemValueDataKey] = itemValue
+			}
+		}
+	}
+	return ivd, fmt.Errorf("%s", sb.String())
+}
+
+func (b *Bulk) getIndexName(collectionName, actionIndexName string) string {
+	if actionIndexName != "" {
+		return actionIndexName
+	}
+
+	indexName := b.collectionIndexMapping[collectionName]
+	if indexName == "" {
+		err := fmt.Errorf(
+			"there is no index mapping for collection: %s on your configuration",
+			collectionName,
+		)
+		logger.Log.Error("error while get index name, err: %v", err)
+		panic(err)
+	}
+
+	return indexName
+}
+
+func fillErrorDataWithBulkRequestError(batchActions []*document.ESActionDocument, err error) map[string]string {
+	errorData := make(map[string]string, len(batchActions))
+	for _, action := range batchActions {
+		key := getActionKey(*action)
+		errorData[key] = err.Error()
+	}
+	return errorData
+}
+
+func (b *Bulk) LockMetrics() {
+	b.metricCounterMutex.Lock()
+}
+
+func (b *Bulk) UnlockMetrics() {
+	b.metricCounterMutex.Unlock()
+}
+
+func (b *Bulk) finalizeProcess(batchItems []BatchItem, errorData map[string]string) {
+	for _, item := range batchItems {
+		key := getActionKey(*item.Action)
+		if _, ok := errorData[key]; ok {
+			go b.countError(item.Action)
+			if b.sinkResponseHandler != nil {
+				b.sinkResponseHandler.OnError(&elasticsearch.SinkResponseHandlerContext{
+					Action: item.Action,
+					Err:    fmt.Errorf("%s", errorData[key]),
+				})
+			}
+		} else {
+			go b.countSuccess(item.Action)
+			if b.sinkResponseHandler != nil {
+				b.sinkResponseHandler.OnSuccess(&elasticsearch.SinkResponseHandlerContext{
+					Action: item.Action,
+				})
+			}
+			if item.Ack != nil {
+				item.Ack()
+			}
+		}
+	}
+}
+
+func (b *Bulk) countError(action *document.ESActionDocument) {
+	b.LockMetrics()
+	defer b.UnlockMetrics()
+
+	switch action.Type {
+	case document.Index, document.DocUpdate, document.ScriptUpdate:
+		b.metric.IndexingErrorActionCounter[action.IndexName]++
+	case document.Delete:
+		b.metric.DeletionErrorActionCounter[action.IndexName]++
+	}
+}
+
+func (b *Bulk) countSuccess(action *document.ESActionDocument) {
+	b.LockMetrics()
+	defer b.UnlockMetrics()
+
+	switch action.Type {
+	case document.Index, document.DocUpdate, document.ScriptUpdate:
+		b.metric.IndexingSuccessActionCounter[action.IndexName]++
+	case document.Delete:
+		b.metric.DeletionSuccessActionCounter[action.IndexName]++
+	}
+}
+
+func getActionKey(action document.ESActionDocument) string {
+	if action.Routing != nil {
+		return fmt.Sprintf("%s:%s:%s", action.ID, action.IndexName, *action.Routing)
+	}
+	return fmt.Sprintf("%s:%s", action.ID, action.IndexName)
+}
+
+func getBytes(batchItems []BatchItem) [][]byte {
+	batchBytes := make([][]byte, 0, len(batchItems))
+	for _, batchItem := range batchItems {
+		batchBytes = append(batchBytes, batchItem.Bytes)
+	}
+	return batchBytes
+}
+
+func getActions(batchItems []BatchItem) []*document.ESActionDocument {
+	result := make([]*document.ESActionDocument, len(batchItems))
+	for i := range batchItems {
+		result[i] = batchItems[i].Action
+	}
+	return result
+}

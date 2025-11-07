@@ -1,0 +1,19 @@
+mongodb:
+  connection:
+    uri: "localhost:27017"
+    database: "exampleDB"
+    collection: "exampleCollection"
+
+metric:
+  port: 8080
+
+partition:
+  totalPartition: 5
+
+elasticsearch:
+  collectionIndexMapping:
+    exampleCollection: "example-collection"
+  urls:
+    - "http://localhost:9200"
+  batchSizeLimit: 1000
+  batchTickerDuration: 10s
