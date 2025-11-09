@@ -253,13 +253,11 @@ func newConnector(cf any, mapper Mapper, sinkResponseHandler cdcElasticsearch.Si
 		checkpointCommitBootstrap,
 		esClient,
 		sinkResponseHandler,
+		metric.NewMetricsRecorder(),
 	)
 	if err != nil {
 		return nil, err
 	}
-
-	metricCollector := metric.NewMetricCollector(connector.bulk)
-	_ = metricCollector
 
 	return connector, nil
 }

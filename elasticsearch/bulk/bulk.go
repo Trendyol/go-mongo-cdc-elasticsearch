@@ -25,7 +25,7 @@ import (
 
 type Bulk struct {
 	sinkResponseHandler          elasticsearch.SinkResponseHandler
-	metric                       *Metric
+	metricsRecorder              elasticsearch.MetricsRecorder
 	collectionIndexMapping       map[string]string
 	config                       *config.Config
 	batchKeys                    map[string]int
@@ -46,16 +46,6 @@ type Bulk struct {
 	batchByteSize                int
 	concurrentRequest            int
 	flushLock                    sync.Mutex
-	metricCounterMutex           sync.Mutex
-}
-
-type Metric struct {
-	IndexingSuccessActionCounter map[string]int64
-	IndexingErrorActionCounter   map[string]int64
-	DeletionSuccessActionCounter map[string]int64
-	DeletionErrorActionCounter   map[string]int64
-	ProcessLatencyMs             int64
-	BulkRequestProcessLatencyMs  int64
 }
 
 type BatchItem struct {
@@ -71,6 +61,7 @@ func NewBulk(
 	cdcCheckpointCommitBootstrap func(partitionID int),
 	esClient *esClient.Client,
 	sinkResponseHandler elasticsearch.SinkResponseHandler,
+	metricsRecorder elasticsearch.MetricsRecorder,
 ) (*Bulk, error) {
 	readers := make([]*helper.MultiDimByteReader, config.Elasticsearch.ConcurrentRequest)
 	for i := 0; i < config.Elasticsearch.ConcurrentRequest; i++ {
@@ -86,19 +77,14 @@ func NewBulk(
 		cdcCheckpointCommit:          cdcCheckpointCommit,
 		cdcCheckpointCommitBootstrap: cdcCheckpointCommitBootstrap,
 		esClient:                     esClient,
-		metric: &Metric{
-			IndexingSuccessActionCounter: make(map[string]int64),
-			IndexingErrorActionCounter:   make(map[string]int64),
-			DeletionSuccessActionCounter: make(map[string]int64),
-			DeletionErrorActionCounter:   make(map[string]int64),
-		},
-		collectionIndexMapping: config.Elasticsearch.CollectionIndexMapping,
-		config:                 config,
-		typeName:               helper.Byte(config.Elasticsearch.TypeName),
-		readers:                readers,
-		concurrentRequest:      config.Elasticsearch.ConcurrentRequest,
-		batchKeys:              make(map[string]int, config.Elasticsearch.BatchSizeLimit),
-		sinkResponseHandler:    sinkResponseHandler,
+		metricsRecorder:              metricsRecorder,
+		collectionIndexMapping:       config.Elasticsearch.CollectionIndexMapping,
+		config:                       config,
+		typeName:                     helper.Byte(config.Elasticsearch.TypeName),
+		readers:                      readers,
+		concurrentRequest:            config.Elasticsearch.ConcurrentRequest,
+		batchKeys:                    make(map[string]int, config.Elasticsearch.BatchSizeLimit),
+		sinkResponseHandler:          sinkResponseHandler,
 	}
 
 	if config.Elasticsearch.BatchCommitTickerDuration != nil {
@@ -172,7 +158,7 @@ func (b *Bulk) AddActions(
 	b.flushLock.Unlock()
 
 	if isLastChunk {
-		b.metric.ProcessLatencyMs = time.Since(eventTime).Milliseconds()
+		b.metricsRecorder.RecordProcessLatency(time.Since(eventTime).Milliseconds())
 	}
 	if b.batchSize >= b.batchSizeLimit || b.batchByteSize >= b.batchByteSizeLimit {
 		b.flushMessages()
@@ -359,13 +345,9 @@ func (b *Bulk) bulkRequest() error {
 
 	err := eg.Wait()
 
-	b.metric.BulkRequestProcessLatencyMs = time.Since(startedTime).Milliseconds()
+	b.metricsRecorder.RecordBulkRequestProcessLatency(time.Since(startedTime).Milliseconds())
 
 	return err
-}
-
-func (b *Bulk) GetMetric() *Metric {
-	return b.metric
 }
 
 func hasResponseError(r *esapi.Response) (map[string]string, error) {
@@ -454,14 +436,6 @@ func fillErrorDataWithBulkRequestError(batchActions []*document.ESActionDocument
 	return errorData
 }
 
-func (b *Bulk) LockMetrics() {
-	b.metricCounterMutex.Lock()
-}
-
-func (b *Bulk) UnlockMetrics() {
-	b.metricCounterMutex.Unlock()
-}
-
 func (b *Bulk) finalizeProcess(batchActions []*document.ESActionDocument, errorData map[string]string) {
 	for _, action := range batchActions {
 		key := getActionKey(*action)
@@ -485,26 +459,20 @@ func (b *Bulk) finalizeProcess(batchActions []*document.ESActionDocument, errorD
 }
 
 func (b *Bulk) countError(action *document.ESActionDocument) {
-	b.LockMetrics()
-	defer b.UnlockMetrics()
-
 	switch action.Type {
 	case document.Index, document.DocUpdate, document.ScriptUpdate:
-		b.metric.IndexingErrorActionCounter[action.IndexName]++
+		b.metricsRecorder.RecordIndexError(action.IndexName, 1)
 	case document.Delete:
-		b.metric.DeletionErrorActionCounter[action.IndexName]++
+		b.metricsRecorder.RecordDeleteError(action.IndexName, 1)
 	}
 }
 
 func (b *Bulk) countSuccess(action *document.ESActionDocument) {
-	b.LockMetrics()
-	defer b.UnlockMetrics()
-
 	switch action.Type {
 	case document.Index, document.DocUpdate, document.ScriptUpdate:
-		b.metric.IndexingSuccessActionCounter[action.IndexName]++
+		b.metricsRecorder.RecordIndexSuccess(action.IndexName, 1)
 	case document.Delete:
-		b.metric.DeletionSuccessActionCounter[action.IndexName]++
+		b.metricsRecorder.RecordDeleteSuccess(action.IndexName, 1)
 	}
 }
 
