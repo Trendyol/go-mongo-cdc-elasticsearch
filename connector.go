@@ -73,7 +73,8 @@ func (c *connector) listener(ctx *stream.ListenerContext) error {
 	switch ctx.Message.OperationType {
 	case message.OperationInsert, message.OperationUpdate, message.OperationReplace:
 		if ctx.Message.FullDocument == nil {
-			return ctx.Ack()
+			ctx.Ack()
+			return nil
 		}
 
 		doc := ctx.Message.FullDocument
@@ -82,7 +83,8 @@ func (c *connector) listener(ctx *stream.ListenerContext) error {
 		docBytes, err := json.Marshal(doc)
 		if err != nil {
 			logger.Log.Error("Failed to marshal document to JSON: %v", err)
-			return ctx.Ack()
+			ctx.Ack()
+			return err
 		}
 
 		var docID string
@@ -136,13 +138,15 @@ func (c *connector) listener(ctx *stream.ListenerContext) error {
 			ctx.PartitionID,
 		)
 	default:
-		return ctx.Ack()
+		ctx.Ack()
+		return nil
 	}
 
 	actions := c.mapper(e)
 
 	if len(actions) == 0 {
-		return ctx.Ack()
+		ctx.Ack()
+		return nil
 	}
 
 	batchSizeLimit := c.config.Elasticsearch.BatchSizeLimit

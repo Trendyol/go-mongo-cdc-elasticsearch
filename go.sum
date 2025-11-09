@@ -1,7 +1,5 @@
-github.com/Trendyol/go-mongo-cdc v0.0.0-20251108210043-60cf9df3b15a h1:4EQW/lJ7duHCTLetfc63HF01TSFZS2aRuynZF4ZU13w=
-github.com/Trendyol/go-mongo-cdc v0.0.0-20251108210043-60cf9df3b15a/go.mod h1:qVsy1dWEXwjQ8rOEE2YkYIlEpTHVb0enTqwkwnvYIKA=
-github.com/Trendyol/go-mongo-cdc v0.0.0-20251109142241-57e278ca776f h1:/wDPp3/tZ+9nQZbtW9ajq1DnGxo91bPEjoCQqtlKXrA=
-github.com/Trendyol/go-mongo-cdc v0.0.0-20251109142241-57e278ca776f/go.mod h1:qVsy1dWEXwjQ8rOEE2YkYIlEpTHVb0enTqwkwnvYIKA=
+github.com/Trendyol/go-mongo-cdc v0.0.0-20251109152204-22e442ae2ac4 h1:jq4PJueMHznmpAuhyicR6aGUunR7UgqN1pPXgHJAeeo=
+github.com/Trendyol/go-mongo-cdc v0.0.0-20251109152204-22e442ae2ac4/go.mod h1:qVsy1dWEXwjQ8rOEE2YkYIlEpTHVb0enTqwkwnvYIKA=
 github.com/andybalholm/brotli v1.2.0 h1:ukwgCxwYrmACq68yiUqwIWnGY0cTPox/M94sVwToPjQ=
 github.com/andybalholm/brotli v1.2.0/go.mod h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
