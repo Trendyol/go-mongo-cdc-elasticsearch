@@ -34,7 +34,7 @@ metric:
   collectionInterval: 30s
 
 checkpoint:
-  changeStreamBatchSize: 3000
+  changeStreamSaveCount: 3000
 
 partition:
   heartbeatInterval: 10s

@@ -15,6 +15,7 @@ import (
 	"github.com/Trendyol/go-mongo-cdc-elasticsearch/elasticsearch/document"
 	"github.com/Trendyol/go-mongo-cdc-elasticsearch/helper"
 	"github.com/Trendyol/go-mongo-cdc/logger"
+	"github.com/Trendyol/go-mongo-cdc/stream"
 	"golang.org/x/sync/errgroup"
 
 	esClient "github.com/elastic/go-elasticsearch/v7"
@@ -61,7 +62,6 @@ type Metric struct {
 type BatchItem struct {
 	Action      *document.ESActionDocument
 	Bytes       []byte
-	Ack         func()
 	PartitionID int
 	IsBootstrap bool
 }
@@ -142,10 +142,11 @@ func (b *Bulk) PrepareEndRebalancing() {
 }
 
 func (b *Bulk) AddActions(
+	ctx *stream.ListenerContext,
 	eventTime time.Time,
 	actions []document.ESActionDocument,
 	collectionName string,
-	ack func(),
+	isLastChunk bool,
 	partitionID int,
 	isBootstrap bool,
 ) {
@@ -173,7 +174,6 @@ func (b *Bulk) AddActions(
 			b.batch[batchIndex] = BatchItem{
 				Action:      &actions[i],
 				Bytes:       value,
-				Ack:         ack,
 				PartitionID: partitionID,
 				IsBootstrap: isBootstrap,
 			}
@@ -181,7 +181,6 @@ func (b *Bulk) AddActions(
 			b.batch = append(b.batch, BatchItem{
 				Action:      &actions[i],
 				Bytes:       value,
-				Ack:         ack,
 				PartitionID: partitionID,
 				IsBootstrap: isBootstrap,
 			})
@@ -191,11 +190,15 @@ func (b *Bulk) AddActions(
 			b.batchByteSize += len(value)
 		}
 	}
+	if isLastChunk {
+		ctx.Ack()
+	}
 
 	b.flushLock.Unlock()
 
-	b.metric.ProcessLatencyMs = time.Since(eventTime).Milliseconds()
-
+	if isLastChunk {
+		b.metric.ProcessLatencyMs = time.Since(eventTime).Milliseconds()
+	}
 	if b.batchSize >= b.batchSizeLimit || b.batchByteSize >= b.batchByteSizeLimit {
 		b.flushMessages()
 	}
@@ -353,12 +356,12 @@ func (b *Bulk) requestFunc(concurrentRequestIndex int, batchItems []BatchItem) f
 					}
 				}
 
-				b.finalizeProcess(batchItems, fillErrorDataWithBulkRequestError(actionsOfBatchItems, err))
+				b.finalizeProcess(actionsOfBatchItems, fillErrorDataWithBulkRequestError(actionsOfBatchItems, err))
 				return err
 			}
 
 			errorData, err := hasResponseError(r)
-			b.finalizeProcess(batchItems, errorData)
+			b.finalizeProcess(actionsOfBatchItems, errorData)
 			if err != nil {
 				return err
 			}
@@ -487,26 +490,23 @@ func (b *Bulk) UnlockMetrics() {
 	b.metricCounterMutex.Unlock()
 }
 
-func (b *Bulk) finalizeProcess(batchItems []BatchItem, errorData map[string]string) {
-	for _, item := range batchItems {
-		key := getActionKey(*item.Action)
+func (b *Bulk) finalizeProcess(batchActions []*document.ESActionDocument, errorData map[string]string) {
+	for _, action := range batchActions {
+		key := getActionKey(*action)
 		if _, ok := errorData[key]; ok {
-			go b.countError(item.Action)
+			go b.countError(action)
 			if b.sinkResponseHandler != nil {
 				b.sinkResponseHandler.OnError(&elasticsearch.SinkResponseHandlerContext{
-					Action: item.Action,
+					Action: action,
 					Err:    fmt.Errorf("%s", errorData[key]),
 				})
 			}
 		} else {
-			go b.countSuccess(item.Action)
+			go b.countSuccess(action)
 			if b.sinkResponseHandler != nil {
 				b.sinkResponseHandler.OnSuccess(&elasticsearch.SinkResponseHandlerContext{
-					Action: item.Action,
+					Action: action,
 				})
-			}
-			if item.Ack != nil {
-				item.Ack()
 			}
 		}
 	}

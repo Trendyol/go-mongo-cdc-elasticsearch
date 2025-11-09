@@ -20,15 +20,18 @@ import (
 	"github.com/Trendyol/go-mongo-cdc/logger"
 	"github.com/Trendyol/go-mongo-cdc/mongo/message"
 	"github.com/Trendyol/go-mongo-cdc/stream"
+	"go.uber.org/zap"
 
-	esClient "github.com/elastic/go-elasticsearch/v7"
+	"github.com/elastic/go-elasticsearch/v7"
 	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/yaml.v3"
 
 	"github.com/Trendyol/go-mongo-cdc-elasticsearch/config"
-	"github.com/Trendyol/go-mongo-cdc-elasticsearch/elasticsearch"
+	cdcElasticsearch "github.com/Trendyol/go-mongo-cdc-elasticsearch/elasticsearch"
 	"github.com/Trendyol/go-mongo-cdc-elasticsearch/elasticsearch/bulk"
 	"github.com/Trendyol/go-mongo-cdc-elasticsearch/elasticsearch/client"
+	"github.com/Trendyol/go-mongo-cdc-elasticsearch/elasticsearch/document"
+	"github.com/Trendyol/go-mongo-cdc-elasticsearch/helper"
 	"github.com/Trendyol/go-mongo-cdc-elasticsearch/metric"
 	"github.com/Trendyol/go-mongo-cdc-elasticsearch/mongodb"
 )
@@ -43,8 +46,8 @@ type connector struct {
 	mapper              Mapper
 	config              *config.Config
 	bulk                *bulk.Bulk
-	esClient            *esClient.Client
-	sinkResponseHandler elasticsearch.SinkResponseHandler
+	esClient            *elasticsearch.Client
+	sinkResponseHandler cdcElasticsearch.SinkResponseHandler
 }
 
 func (c *connector) Start(ctx context.Context) {
@@ -142,13 +145,16 @@ func (c *connector) listener(ctx *stream.ListenerContext) error {
 		return ctx.Ack()
 	}
 
-	ackFunc := func() {
-		if err := ctx.Ack(); err != nil {
-			logger.Log.Error("Failed to ack event: %v", err)
+	batchSizeLimit := c.config.Elasticsearch.BatchSizeLimit
+	if len(actions) > batchSizeLimit {
+		chunks := helper.ChunkSliceWithSize[document.ESActionDocument](actions, batchSizeLimit)
+		lastChunkIndex := len(chunks) - 1
+		for idx, chunk := range chunks {
+			c.bulk.AddActions(ctx, e.EventTime, chunk, e.CollectionName, idx == lastChunkIndex, ctx.PartitionID, ctx.IsBootstrap)
 		}
+	} else {
+		c.bulk.AddActions(ctx, e.EventTime, actions, e.CollectionName, true, ctx.PartitionID, ctx.IsBootstrap)
 	}
-
-	c.bulk.AddActions(e.EventTime, actions, e.CollectionName, ackFunc, ctx.PartitionID, ctx.IsBootstrap)
 
 	return nil
 }
@@ -192,7 +198,7 @@ func newConfig(cf any) (*config.Config, error) {
 	}
 }
 
-func newConnector(cf any, mapper Mapper, sinkResponseHandler elasticsearch.SinkResponseHandler, metricCollectors ...prometheus.Collector) (Connector, error) {
+func newConnector(cf any, mapper Mapper, sinkResponseHandler cdcElasticsearch.SinkResponseHandler, metricCollectors ...prometheus.Collector) (Connector, error) {
 	cfg, err := newConfig(cf)
 	if err != nil {
 		return nil, err
@@ -261,7 +267,7 @@ func newConnector(cf any, mapper Mapper, sinkResponseHandler elasticsearch.SinkR
 type ConnectorBuilder struct {
 	mapper              Mapper
 	config              any
-	sinkResponseHandler elasticsearch.SinkResponseHandler
+	sinkResponseHandler cdcElasticsearch.SinkResponseHandler
 	metricCollectors    []prometheus.Collector
 }
 
@@ -281,12 +287,19 @@ func (c *ConnectorBuilder) SetMapper(mapper Mapper) *ConnectorBuilder {
 	return c
 }
 
+func (c *ConnectorBuilder) SetLogger(zapLogger *zap.Logger) *ConnectorBuilder {
+	logger.Log = &logger.Loggers{
+		Zap: zapLogger,
+	}
+	return c
+}
+
 func (c *ConnectorBuilder) SetMetricCollectors(collectors ...prometheus.Collector) *ConnectorBuilder {
 	c.metricCollectors = append(c.metricCollectors, collectors...)
 	return c
 }
 
-func (c *ConnectorBuilder) SetSinkResponseHandler(sinkResponseHandler elasticsearch.SinkResponseHandler) *ConnectorBuilder {
+func (c *ConnectorBuilder) SetSinkResponseHandler(sinkResponseHandler cdcElasticsearch.SinkResponseHandler) *ConnectorBuilder {
 	c.sinkResponseHandler = sinkResponseHandler
 	return c
 }

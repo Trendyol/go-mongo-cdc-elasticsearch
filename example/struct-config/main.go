@@ -27,7 +27,7 @@ func main() {
 				"exampleCollection": "example-collection",
 			},
 			Urls:                []string{"http://localhost:9200"},
-			BatchSizeLimit:      1000,
+			BatchSizeLimit:      3000,
 			BatchTickerDuration: 10 * time.Second,
 			BatchByteSizeLimit:  "10mb",
 			ConcurrentRequest:   1,
@@ -55,7 +55,9 @@ func main() {
 				CollectionInterval: 30 * time.Second,
 			},
 			Checkpoint: cdcConfig.CheckpointConfig{
-				BootstrapBatchSize: 3000,
+				BootstrapSaveCount:      3000,
+				BootstrapQueryBatchSize: 3000,
+				ChangeStreamSaveCount:   3000,
 			},
 			Partition: cdcConfig.PartitionConfig{
 				HeartbeatInterval:      10 * time.Second,
