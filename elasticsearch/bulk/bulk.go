@@ -47,7 +47,6 @@ type Bulk struct {
 	concurrentRequest            int
 	flushLock                    sync.Mutex
 	metricCounterMutex           sync.Mutex
-	isCDCRebalancing             bool
 }
 
 type Metric struct {
@@ -122,25 +121,6 @@ func (b *Bulk) StartBulk() {
 	}
 }
 
-func (b *Bulk) PrepareStartRebalancing() {
-	b.flushLock.Lock()
-	defer b.flushLock.Unlock()
-
-	b.isCDCRebalancing = true
-	b.batch = b.batch[:0]
-	b.batchKeys = make(map[string]int, b.batchSizeLimit)
-	b.batchIndex = 0
-	b.batchSize = 0
-	b.batchByteSize = 0
-}
-
-func (b *Bulk) PrepareEndRebalancing() {
-	b.flushLock.Lock()
-	defer b.flushLock.Unlock()
-
-	b.isCDCRebalancing = false
-}
-
 func (b *Bulk) AddActions(
 	ctx *stream.ListenerContext,
 	eventTime time.Time,
@@ -151,11 +131,6 @@ func (b *Bulk) AddActions(
 	isBootstrap bool,
 ) {
 	b.flushLock.Lock()
-	if b.isCDCRebalancing {
-		logger.Log.Warn("could not add new message to batch while rebalancing")
-		b.flushLock.Unlock()
-		return
-	}
 	for i, action := range actions {
 		indexName := b.getIndexName(collectionName, action.IndexName)
 		actions[i].IndexName = indexName
@@ -279,9 +254,6 @@ func (b *Bulk) Close() {
 func (b *Bulk) flushMessages() {
 	b.flushLock.Lock()
 	defer b.flushLock.Unlock()
-	if b.isCDCRebalancing {
-		return
-	}
 	if len(b.batch) > 0 {
 		err := b.bulkRequest()
 		if err != nil && b.sinkResponseHandler == nil {
