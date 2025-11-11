@@ -23,7 +23,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/elastic/go-elasticsearch/v7"
-	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/yaml.v3"
 
 	"github.com/Trendyol/go-mongo-cdc-elasticsearch/config"
@@ -80,59 +79,29 @@ func (c *connector) listener(ctx *stream.ListenerContext) error {
 		doc := ctx.Message.FullDocument
 		delete(doc, "_id")
 
-		docBytes, err := json.Marshal(doc)
+		docBytes, err := jsoniter.Marshal(doc)
 		if err != nil {
 			logger.Log.Error("Failed to marshal document to JSON: %v", err)
 			ctx.Ack()
 			return err
 		}
 
-		var docID string
-		switch id := ctx.Message.DocumentID.(type) {
-		case primitive.ObjectID:
-			docID = id.Hex()
-		case int:
-			docID = strconv.Itoa(id)
-		case int32:
-			docID = strconv.FormatInt(int64(id), 10)
-		case int64:
-			docID = strconv.FormatInt(id, 10)
-		case string:
-			docID = id
-		default:
-			docID = fmt.Sprintf("%v", id)
-			logger.Log.Warn("Unexpected document ID type: %T, value: %v", id, id)
-		}
+		docIDBytes := documentIDToBytes(ctx.Message.DocumentID)
 
 		e = mongodb.NewMutateEvent(
 			c.esClient,
-			[]byte(docID),
+			docIDBytes,
 			docBytes,
 			ctx.Message.Collection,
 			ctx.Message.EventTime,
 			ctx.PartitionID,
 		)
 	case message.OperationDelete:
-		var docID string
-		switch id := ctx.Message.DocumentID.(type) {
-		case primitive.ObjectID:
-			docID = id.Hex()
-		case int:
-			docID = strconv.Itoa(id)
-		case int32:
-			docID = strconv.FormatInt(int64(id), 10)
-		case int64:
-			docID = strconv.FormatInt(id, 10)
-		case string:
-			docID = id
-		default:
-			docID = fmt.Sprintf("%v", id)
-			logger.Log.Warn("Unexpected document ID type (delete): %T, value: %v", id, id)
-		}
+		docIDBytes := documentIDToBytes(ctx.Message.DocumentID)
 
 		e = mongodb.NewDeleteEvent(
 			c.esClient,
-			[]byte(docID),
+			docIDBytes,
 			ctx.Message.Collection,
 			ctx.Message.EventTime,
 			ctx.PartitionID,
@@ -161,6 +130,27 @@ func (c *connector) listener(ctx *stream.ListenerContext) error {
 	}
 
 	return nil
+}
+
+func documentIDToBytes(id interface{}) []byte {
+	var docID string
+	switch id := id.(type) {
+	case primitive.ObjectID:
+		docID = id.Hex()
+	case int:
+		docID = strconv.Itoa(id)
+	case int32:
+		docID = strconv.FormatInt(int64(id), 10)
+	case int64:
+		docID = strconv.FormatInt(id, 10)
+	case string:
+		docID = id
+	default:
+		docID = fmt.Sprintf("%v", id)
+		logger.Log.Warn("Unexpected document ID type: %T, value: %v", id, id)
+	}
+
+	return helper.Byte(docID)
 }
 
 func newConnectorConfigFromPath(path string) (*config.Config, error) {
@@ -202,7 +192,7 @@ func newConfig(cf any) (*config.Config, error) {
 	}
 }
 
-func newConnector(cf any, mapper Mapper, sinkResponseHandler cdcElasticsearch.SinkResponseHandler, metricCollectors ...prometheus.Collector) (Connector, error) {
+func newConnector(cf any, mapper Mapper, sinkResponseHandler cdcElasticsearch.SinkResponseHandler) (Connector, error) {
 	cfg, err := newConfig(cf)
 	if err != nil {
 		return nil, err
@@ -270,7 +260,6 @@ type ConnectorBuilder struct {
 	mapper              Mapper
 	config              any
 	sinkResponseHandler cdcElasticsearch.SinkResponseHandler
-	metricCollectors    []prometheus.Collector
 }
 
 func NewConnectorBuilder(config any) *ConnectorBuilder {
@@ -281,7 +270,7 @@ func NewConnectorBuilder(config any) *ConnectorBuilder {
 }
 
 func (c *ConnectorBuilder) Build() (Connector, error) {
-	return newConnector(c.config, c.mapper, c.sinkResponseHandler, c.metricCollectors...)
+	return newConnector(c.config, c.mapper, c.sinkResponseHandler)
 }
 
 func (c *ConnectorBuilder) SetMapper(mapper Mapper) *ConnectorBuilder {
@@ -293,11 +282,6 @@ func (c *ConnectorBuilder) SetLogger(zapLogger *zap.Logger) *ConnectorBuilder {
 	logger.Log = &logger.Loggers{
 		Zap: zapLogger,
 	}
-	return c
-}
-
-func (c *ConnectorBuilder) SetMetricCollectors(collectors ...prometheus.Collector) *ConnectorBuilder {
-	c.metricCollectors = append(c.metricCollectors, collectors...)
 	return c
 }
 
