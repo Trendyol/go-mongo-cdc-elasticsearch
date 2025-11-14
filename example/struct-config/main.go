@@ -51,8 +51,7 @@ func main() {
 				},
 			},
 			Metric: cdcConfig.MetricConfig{
-				Port:               8080,
-				CollectionInterval: 30 * time.Second,
+				Port: 8080,
 			},
 			Checkpoint: cdcConfig.CheckpointConfig{
 				BootstrapSaveCount:      3000,
@@ -65,7 +64,7 @@ func main() {
 				RebalanceCheckInterval: 10 * time.Second,
 				TotalPartition:         5,
 			},
-			Logger: cdcConfig.LoggerConfig{LogLevel: "info"},
+			Logger: cdcConfig.LoggerConfig{LogLevel: "debug"},
 		},
 	}
 

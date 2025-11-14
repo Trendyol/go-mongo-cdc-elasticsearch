@@ -31,7 +31,6 @@ elasticsearch:
 
 metric:
   port: 8080
-  collectionInterval: 30s
 
 checkpoint:
   changeStreamSaveCount: 3000
