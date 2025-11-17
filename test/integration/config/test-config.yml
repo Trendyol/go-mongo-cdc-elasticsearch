@@ -1,0 +1,50 @@
+mongodb:
+  connection:
+    uri: "localhost:27017"
+    database: "testdb"
+    collection: "testcollection"
+    username: ""
+    password: ""
+  connectionPool:
+    maxPoolSize: 10
+    minPoolSize: 2
+    maxIdleTimeMS: 60000
+  timeouts:
+    connectTimeoutMS: 10000
+    serverSelectionTimeoutMS: 30000
+    socketTimeoutMS: 60000
+
+elasticsearch:
+  collectionIndexMapping:
+    testcollection: "test-index"
+  urls:
+    - "http://localhost:9200"
+  username: ""
+  password: ""
+  batchSizeLimit: 100
+  batchTickerDuration: 2s
+  batchByteSizeLimit: 5mb
+  concurrentRequest: 1
+  compressionEnabled: false
+  disableDiscoverNodesOnStart: true
+  maxRetries: 3
+
+metric:
+  port: 8080
+
+checkpoint:
+  changeStreamSaveCount: 10
+
+partition:
+  heartbeatInterval: 5s
+  workerTimeout: 30s
+  workersCollection: "workers"
+  partitionsCollection: "partition_assignments"
+  rebalanceCheckInterval: 5s
+  totalPartition: 1
+
+logger:
+  logLevel: "debug"
+
+gracefulShutdownTimeout: 10s
+
