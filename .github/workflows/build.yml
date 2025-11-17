@@ -1,0 +1,53 @@
+name: Build
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+    types: [opened, reopened, synchronize]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.25.1'
+
+      - name: Configure Git for private repos
+        run: |
+          git config --global url."https://${{ secrets.GH_PAT }}@github.com/".insteadOf "https://github.com/"
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+
+      - name: Set Go private modules
+        run: |
+          go env -w GOPRIVATE=github.com/Trendyol/*
+          go env -w GONOPROXY=github.com/Trendyol/*
+          go env -w GONOSUMDB=github.com/Trendyol/*
+
+      - name: Build
+        run: go build -v ./...
+
+      - name: Test
+        run: go test -v ./...
+
+#  security-gates:
+#    uses: Trendyol/security-actions/.github/workflows/security-gates.yml@master
+#    needs: build
+#    permissions:
+#      actions: read
+#      contents: read
+#      security-events: write
