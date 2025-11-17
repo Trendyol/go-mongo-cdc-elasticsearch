@@ -1,194 +1,132 @@
 # Testing Guide
 
-Bu dokümanda `go-mongo-cdc-elasticsearch` projesinin testlerini nasıl çalıştıracağınız açıklanmaktadır.
+This document explains how to run tests for the `go-mongo-cdc-elasticsearch` project.
 
-## Test Türleri
+## Test Types
 
 ### 1. Unit Tests
-Bireysel fonksiyonları ve modülleri test eder.
+Tests individual functions and modules.
 
 ### 2. Integration Tests
-MongoDB ve Elasticsearch ile gerçek entegrasyon testleri.
+Real integration tests with MongoDB and Elasticsearch.
 
-## Integration Testlerini Çalıştırma
+## Running Integration Tests
 
-### Yöntem 1: Docker Compose ile (go-dcp-elasticsearch benzeri) ⭐
+### Method 1: Complete Integration Test (Recommended) ⭐
 
-Bu yöntem `go-dcp-elasticsearch` projesindeki gibi çalışır.
+Run all integration tests with a single command:
 
 ```bash
-# Proje kök dizininde
-cd /Users/mehmet.alak/go/src/opensource/go-mongo-cdc-elasticsearch
-
-# Tüm servisleri başlat ve testleri çalıştır
-make compose
+# From project root directory
+make test-integration
 ```
 
-Bu komut:
-1. MongoDB custom image'ını build eder
-2. Elasticsearch custom image'ını build eder
-3. Integration test image'ını build eder
-4. Tüm container'ları başlatır
-5. Health check'leri bekler
-6. Testleri otomatik çalıştırır
+This command:
+1. Starts all Docker containers
+2. Waits for services to be healthy (~10-20 seconds)
+3. Runs all integration tests sequentially
+4. Stops and cleans up all containers
 
-**Avantajları:**
-- ✅ Tek komut ile her şey çalışır
-- ✅ go-dcp-elasticsearch ile aynı yapı
-- ✅ CI/CD için ideal
-- ✅ Temiz ve izole ortam
+**Advantages:**
+- ✅ Everything works with a single command
+- ✅ Ideal for CI/CD
+- ✅ Clean and isolated environment
+- ✅ Automatic cleanup
 
-### Yöntem 2: Makefile ile (Adım Adım)
+### Method 2: Step-by-Step with Makefile
 
 ```bash
-# Test ortamını başlat
+# Start test environment
 make test-integration-up
 
-# Testleri çalıştır
+# Run tests
 make test-integration-run
 
-# Logları izle (opsiyonel)
+# View logs (optional)
 make test-integration-logs
 
-# Ortamı kapat
+# Stop environment
 make test-integration-down
 ```
 
-**Avantajları:**
-- ✅ Daha fazla kontrol
-- ✅ Debug için uygun
-- ✅ Adım adım çalıştırma
+**Advantages:**
+- ✅ More control
+- ✅ Suitable for debugging
+- ✅ Step-by-step execution
+- ✅ Manual access to services
 
-### Yöntem 3: Manuel Docker Compose
+### Method 3: Manual Docker Compose
 
 ```bash
-# Servisleri başlat
+# Start services
 docker-compose -f test/integration/docker-compose.yml up -d
 
-# Servislerin hazır olmasını bekle
-sleep 45
+# Wait for services to be ready
+# (The services will automatically become healthy)
 
-# Testleri çalıştır
+# Run tests
 cd test/integration
 go test -v -timeout 10m
 
-# Servisleri kapat
+# Stop services
 cd ../..
 docker-compose -f test/integration/docker-compose.yml down
 ```
 
-## Karşılaştırma: İki Yöntem
+## Test Scenarios
 
-### go-dcp-elasticsearch Tarzı (Önerilen)
-
-```bash
-# Kök dizinde docker-compose.yml var
-make compose
-```
-
-**Yapı:**
-```
-go-mongo-cdc-elasticsearch/
-├── docker-compose.yml           # Ana compose file
-├── test/
-│   ├── mongodb/
-│   │   └── Dockerfile
-│   ├── elasticsearch/
-│   │   └── Dockerfile
-│   └── integration/
-│       ├── Dockerfile           # Test container'ı
-│       └── integration_test.go
-```
-
-### Klasik Yöntem
+### Run All Tests
 
 ```bash
-# test/integration/ dizininde docker-compose.yml var
-make test-integration
-```
-
-**Yapı:**
-```
-go-mongo-cdc-elasticsearch/
-└── test/
-    └── integration/
-        ├── docker-compose.yml   # Test-specific compose
-        └── integration_test.go
-```
-
-## Hangi Yöntemi Kullanmalıyım?
-
-### `make compose` (go-dcp-elasticsearch tarzı)
-**Kullan eğer:**
-- ✅ go-dcp-elasticsearch ile tutarlılık istiyorsanız
-- ✅ CI/CD pipeline'ında çalıştıracaksanız
-- ✅ Tek komut ile her şeyi yapmak istiyorsanız
-- ✅ Temiz ve izole test ortamı istiyorsanız
-
-### `make test-integration` (Klasik)
-**Kullan eğer:**
-- ✅ Test ortamını uzun süre açık tutacaksanız
-- ✅ Debug yapmak istiyorsanız
-- ✅ Testleri tekrar tekrar çalıştıracaksanız
-- ✅ Servislere manuel erişmek istiyorsanız
-
-## Test Senaryoları
-
-### Tüm Testleri Çalıştır
-
-```bash
-# Yöntem 1: Docker Compose
-make compose
-
-# Yöntem 2: Makefile
+# Method 1: Complete (Recommended)
 make test-integration
 
-# Yöntem 3: Manuel
+# Method 2: Manual
 cd test/integration
 go test -v -timeout 10m
 ```
 
-### Belirli Bir Testi Çalıştır
+### Run Specific Test
 
 ```bash
-# Önce test ortamını başlat
+# First, start test environment
 make test-integration-up
 
-# Belirli testi çalıştır
+# Run specific test
 cd test/integration
-go test -v -run TestIntegration_BasicInsertOperation
+go test -v -run TestIntegration_BasicInsertOperation -timeout 5m
 
-# Ortamı kapat
+# Stop environment
 cd ../..
 make test-integration-down
 ```
 
-### Mevcut Testler
+### Available Tests
 
 1. **TestIntegration_BasicInsertOperation**
-   - MongoDB'ye insert → Elasticsearch'e senkronizasyon
+   - Insert to MongoDB → Sync to Elasticsearch
 
 2. **TestIntegration_MultipleInserts**
-   - 10 doküman toplu insert
+   - Bulk insert of 10 documents
 
 3. **TestIntegration_UpdateOperation**
-   - MongoDB'de update → Elasticsearch'te update
+   - Update in MongoDB → Update in Elasticsearch
 
 4. **TestIntegration_DeleteOperation**
-   - MongoDB'den delete → Elasticsearch'ten delete
+   - Delete from MongoDB → Delete from Elasticsearch
 
 5. **TestIntegration_CustomMapper**
-   - Custom mapper fonksiyonu testi
+   - Custom mapper function test
 
-## Servis Kontrolü
+## Service Control
 
 ### MongoDB
 
 ```bash
-# Container'a bağlan
-docker exec -it mongodb-router mongosh
+# Connect to container
+docker exec -it mongodb-router-test mongosh
 
-# MongoDB shell'de
+# In MongoDB shell
 show dbs
 use testdb
 db.testcollection.find()
@@ -200,117 +138,113 @@ db.testcollection.find()
 # Health check
 curl http://localhost:9200/_cluster/health?pretty
 
-# Index'leri listele
+# List indices
 curl http://localhost:9200/_cat/indices?v
 
-# Dokümanları say
+# Count documents
 curl http://localhost:9200/test-index/_count
 
-# Dokümanları listele
+# List documents
 curl http://localhost:9200/test-index/_search?pretty
 ```
 
-## Logları İzleme
+## Viewing Logs
 
-### Tüm Servislerin Logları
+### All Service Logs
 
 ```bash
-# docker-compose kullanıyorsanız
-docker compose logs -f
+# Using docker-compose
+docker-compose -f test/integration/docker-compose.yml logs -f
 
-# VEYA test/integration/docker-compose.yml kullanıyorsanız
+# OR using Makefile
 make test-integration-logs
 ```
 
-### Belirli Bir Servisin Logları
+### Specific Service Logs
 
 ```bash
 # MongoDB
-docker compose logs -f mongodb-router
+docker-compose -f test/integration/docker-compose.yml logs -f mongodb-router-test
 
 # Elasticsearch
-docker compose logs -f elasticsearch
-
-# Integration Test
-docker compose logs -f integration-test
+docker-compose -f test/integration/docker-compose.yml logs -f elasticsearch-test
 ```
 
-## Sorun Giderme
+## Troubleshooting
 
-### Container'lar Başlamıyor
+### Containers Won't Start
 
 ```bash
-# Container durumunu kontrol et
+# Check container status
 docker ps -a
 
-# Logları kontrol et
-docker compose logs
+# Check logs
+docker-compose -f test/integration/docker-compose.yml logs
 
-# Yeniden başlat
-docker compose down -v
-docker compose up --build
+# Restart
+docker-compose -f test/integration/docker-compose.yml down -v
+docker-compose -f test/integration/docker-compose.yml up -d
 ```
 
-### Port Çakışması
+### Port Conflicts
 
 ```bash
-# Çalışan container'ları kontrol et
+# Check running containers
 docker ps
 
-# Portları kontrol et
+# Check ports
 lsof -i :27017  # MongoDB
 lsof -i :9200   # Elasticsearch
 
-# Eski container'ları temizle
-docker compose down -v
+# Clean up old containers
+docker-compose -f test/integration/docker-compose.yml down -v
 ```
 
-### Testler Timeout Oluyor
+### Tests Timeout
 
 ```bash
-# Daha uzun timeout
+# Use longer timeout
 go test -v -timeout 20m
 
-# Veya docker-compose'da wait süresini artır
-# healthcheck retries değerini artır
+# Or increase healthcheck retries in docker-compose.yml
 ```
 
-### Image Build Hataları
+### Image Build Errors
 
 ```bash
-# Cache'i temizle ve yeniden build et
-docker compose build --no-cache
+# Clear cache and rebuild
+docker-compose -f test/integration/docker-compose.yml build --no-cache
 
-# Veya
+# Or
 docker system prune -a
-docker compose up --build
+docker-compose -f test/integration/docker-compose.yml up --build
 ```
 
-## Temizlik
+## Cleanup
 
-### Tüm Container'ları ve Volume'ları Temizle
+### Clean All Containers and Volumes
 
 ```bash
-# docker-compose kullanıyorsanız
-docker compose down -v
-
-# VEYA
+# Using Makefile
 make test-integration-clean
+
+# OR using docker-compose
+docker-compose -f test/integration/docker-compose.yml down -v
 ```
 
-### Docker Sistem Temizliği
+### Docker System Cleanup
 
 ```bash
-# Kullanılmayan image'ları temizle
+# Clean unused images
 docker image prune -a
 
-# Tüm sistemi temizle (DİKKAT!)
+# Clean entire system (CAUTION!)
 docker system prune -a --volumes
 ```
 
-## CI/CD Entegrasyonu
+## CI/CD Integration
 
-### GitHub Actions Örneği
+### GitHub Actions Example
 
 ```yaml
 name: Integration Tests
@@ -329,10 +263,10 @@ jobs:
           go-version: '1.25'
       
       - name: Run Integration Tests
-        run: make compose
+        run: make test-integration
 ```
 
-### GitLab CI Örneği
+### GitLab CI Example
 
 ```yaml
 integration-test:
@@ -341,59 +275,91 @@ integration-test:
   services:
     - docker:dind
   script:
-    - docker compose up --wait --build
+    - make test-integration
   after_script:
-    - docker compose down -v
+    - docker-compose -f test/integration/docker-compose.yml down -v
 ```
 
-## Performans İpuçları
+## Performance Tips
 
-1. **İlk Build**: 5-10 dakika sürebilir (image'lar build edilir)
-2. **Sonraki Build'ler**: Cache sayesinde 1-2 dakika
-3. **Test Süresi**: ~5-10 dakika (tüm testler)
-4. **RAM Kullanımı**: ~2-3 GB
-5. **Disk Kullanımı**: ~2 GB
+1. **First Build**: May take 5-10 minutes (images are built)
+2. **Subsequent Builds**: 1-2 minutes thanks to cache
+3. **Test Duration**: ~5-10 minutes (all tests)
+4. **RAM Usage**: ~2-3 GB
+5. **Disk Usage**: ~2 GB
 
-## Önerilen Workflow
+## Recommended Workflow
 
-### Geliştirme Sırasında
+### During Development
 
 ```bash
-# 1. Test ortamını başlat (bir kez)
+# 1. Start test environment (once)
 make test-integration-up
 
-# 2. Kod değişikliği yap
+# 2. Make code changes
 
-# 3. Testleri çalıştır (tekrar tekrar)
+# 3. Run tests (repeatedly)
 cd test/integration
-go test -v -run TestIntegration_YourTest
+go test -v -run TestIntegration_YourTest -timeout 5m
 
-# 4. Bitince ortamı kapat
+# 4. Stop environment when done
 cd ../..
 make test-integration-down
 ```
 
-### CI/CD'de
+### In CI/CD
 
 ```bash
-# Tek komut - her şeyi yapar
-make compose
+# Single command - does everything
+make test-integration
 ```
 
-## Ek Kaynaklar
+## Additional Resources
 
 - [Integration Test README](test/integration/README.md)
 - [MongoDB Test Infrastructure](test/mongodb/README.md)
 - [Elasticsearch Test Infrastructure](test/elasticsearch/README.md)
-- [Quick Start Guide](test/integration/QUICKSTART.md)
 
-## Yardım
+## Help
 
 ```bash
-# Tüm make komutlarını gör
+# View all make commands
 make help
 
-# Veya Makefile'ı oku
+# Or read the Makefile
 cat Makefile
 ```
 
+## Project Structure
+
+```
+go-mongo-cdc-elasticsearch/
+├── Makefile                    # Build and test commands
+├── test/
+│   ├── mongodb/
+│   │   ├── Dockerfile         # Custom MongoDB image
+│   │   ├── configure.sh       # MongoDB setup script
+│   │   └── README.md
+│   ├── elasticsearch/
+│   │   ├── Dockerfile         # Custom Elasticsearch image
+│   │   ├── config/
+│   │   │   └── elasticsearch.yml
+│   │   └── README.md
+│   └── integration/
+│       ├── docker-compose.yml # Test environment setup
+│       ├── config/
+│       │   └── test-config.yml
+│       ├── scripts/
+│       │   └── setup-mongodb.sh
+│       ├── helpers.go         # Test helper functions
+│       ├── integration_test.go # Integration tests
+│       └── README.md
+```
+
+## Notes
+
+- Tests run **sequentially** to avoid Prometheus metrics collision
+- Each test uses a **unique metrics port** automatically
+- Services use **health checks** for smart waiting
+- **No fixed sleep times** - tests wait for actual conditions
+- All tests are **isolated** and **independent**
