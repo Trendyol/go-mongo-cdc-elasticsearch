@@ -1,0 +1,21 @@
+cluster.name: "test-cluster"
+node.name: "test-node"
+
+network.host: 0.0.0.0
+http.port: 9200
+transport.tcp.port: 9300
+
+# Single node discovery
+discovery.type: single-node
+
+# Disable security for testing (7.17.10 compatible)
+xpack.security.enabled: false
+
+# Performance settings for testing
+bootstrap.memory_lock: false
+indices.query.bool.max_clause_count: 10000
+
+# Logging
+logger.level: INFO
+logger.org.elasticsearch.discovery: DEBUG
+

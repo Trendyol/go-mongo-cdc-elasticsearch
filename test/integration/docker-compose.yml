@@ -1,0 +1,141 @@
+version: '3.8'
+
+services:
+  # MongoDB Config Server
+  mongodb-config:
+    build:
+      context: ../mongodb
+      dockerfile: Dockerfile
+    container_name: mongodb-config-test
+    environment:
+      - MONGO_ROLE=config
+    volumes:
+      - mongodb-config-data:/data/db
+    networks:
+      - test-network
+    ports:
+      - "27019:27019"
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')", "--port", "27019"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # MongoDB Shard 1
+  mongodb-shard1:
+    build:
+      context: ../mongodb
+      dockerfile: Dockerfile
+    container_name: mongodb-shard1-test
+    environment:
+      - MONGO_ROLE=shard1
+    volumes:
+      - mongodb-shard1-data:/data/db
+    networks:
+      - test-network
+    ports:
+      - "27018:27018"
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')", "--port", "27018"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # MongoDB Shard 2
+  mongodb-shard2:
+    build:
+      context: ../mongodb
+      dockerfile: Dockerfile
+    container_name: mongodb-shard2-test
+    environment:
+      - MONGO_ROLE=shard2
+    volumes:
+      - mongodb-shard2-data:/data/db
+    networks:
+      - test-network
+    ports:
+      - "27028:27018"
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')", "--port", "27018"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # MongoDB Router (mongos)
+  mongodb-router:
+    build:
+      context: ../mongodb
+      dockerfile: Dockerfile
+    container_name: mongodb-router-test
+    environment:
+      - MONGO_ROLE=router
+    networks:
+      - test-network
+    ports:
+      - "27017:27017"
+    depends_on:
+      mongodb-config:
+        condition: service_healthy
+      mongodb-shard1:
+        condition: service_healthy
+      mongodb-shard2:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # MongoDB Setup
+  mongodb-setup:
+    image: mongo:7.0.15
+    container_name: mongodb-setup-test
+    restart: on-failure
+    networks:
+      - test-network
+    depends_on:
+      mongodb-router:
+        condition: service_healthy
+    volumes:
+      - ./scripts:/scripts
+    entrypoint: ["/scripts/setup-mongodb.sh"]
+
+  # Elasticsearch
+  elasticsearch:
+    build:
+      context: ../elasticsearch
+      dockerfile: Dockerfile
+    container_name: elasticsearch-test
+    environment:
+      - discovery.type=single-node
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - xpack.security.enabled=false
+      - cluster.name=test-cluster
+      - node.name=test-node
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    networks:
+      - test-network
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+networks:
+  test-network:
+    driver: bridge
+
+volumes:
+  mongodb-config-data:
+  mongodb-shard1-data:
+  mongodb-shard2-data:
+  elasticsearch-data:
