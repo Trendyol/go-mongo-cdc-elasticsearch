@@ -21,13 +21,14 @@ func convertByteStringToInt(s string) int {
 	s = strings.ToLower(s)
 
 	multiplier := 1
-	if strings.HasSuffix(s, "kb") {
+	switch {
+	case strings.HasSuffix(s, "kb"):
 		multiplier = 1024
 		s = strings.TrimSuffix(s, "kb")
-	} else if strings.HasSuffix(s, "mb") {
+	case strings.HasSuffix(s, "mb"):
 		multiplier = 1024 * 1024
 		s = strings.TrimSuffix(s, "mb")
-	} else if strings.HasSuffix(s, "gb") {
+	case strings.HasSuffix(s, "gb"):
 		multiplier = 1024 * 1024 * 1024
 		s = strings.TrimSuffix(s, "gb")
 	}

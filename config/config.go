@@ -1,10 +1,10 @@
 package config
 
 import (
-	"github.com/Trendyol/go-mongo-cdc-elasticsearch/helper"
 	"math"
 	"time"
 
+	"github.com/Trendyol/go-mongo-cdc-elasticsearch/helper"
 	cdcConfig "github.com/Trendyol/go-mongo-cdc/config"
 )
 

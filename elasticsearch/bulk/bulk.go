@@ -255,7 +255,7 @@ func (b *Bulk) flushMessages() {
 				bootstrapPartitions[batch.PartitionID] = true
 			}
 
-			metaPool.Put(batch.Bytes)
+			metaPool.Put(batch.Bytes) //nolint:staticcheck
 		}
 
 		b.batch = b.batch[:0]
