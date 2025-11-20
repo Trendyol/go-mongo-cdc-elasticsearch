@@ -63,6 +63,7 @@ func main() {
 				WorkerTimeout:          90 * time.Second,
 				RebalanceCheckInterval: 10 * time.Second,
 				TotalPartition:         5,
+				ConsumerGroup:          "consumerGroup",
 			},
 			Logger: cdcConfig.LoggerConfig{LogLevel: "debug"},
 		},

@@ -9,6 +9,7 @@ metric:
 
 partition:
   totalPartition: 5
+  consumerGroup: consumerGroup
 
 elasticsearch:
   collectionIndexMapping:

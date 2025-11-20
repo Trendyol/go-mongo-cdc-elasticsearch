@@ -1,5 +1,5 @@
-github.com/Trendyol/go-mongo-cdc v0.0.0-20251114102548-e7747030fe36 h1:+IcwSyAI0LtejJiLcQ2BtY5YeHuKifoA/iC3N5Jxxfo=
-github.com/Trendyol/go-mongo-cdc v0.0.0-20251114102548-e7747030fe36/go.mod h1:qVsy1dWEXwjQ8rOEE2YkYIlEpTHVb0enTqwkwnvYIKA=
+github.com/Trendyol/go-mongo-cdc v0.0.0-20251120175048-8278e36196c8 h1:S/un/qTFVFR5uGIp/hu23aut0EbqUgdL9spGoVsYURU=
+github.com/Trendyol/go-mongo-cdc v0.0.0-20251120175048-8278e36196c8/go.mod h1:qVsy1dWEXwjQ8rOEE2YkYIlEpTHVb0enTqwkwnvYIKA=
 github.com/andybalholm/brotli v1.2.0 h1:ukwgCxwYrmACq68yiUqwIWnGY0cTPox/M94sVwToPjQ=
 github.com/andybalholm/brotli v1.2.0/go.mod h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=

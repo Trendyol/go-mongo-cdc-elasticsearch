@@ -218,9 +218,10 @@ func newConnector(cf any, mapper Mapper, sinkResponseHandler cdcElasticsearch.Si
 
 	cdc, err := cdc.NewConnector(cdcCfg, connector.listener)
 	if err != nil {
-		logger.Log.Error("CDC error: %v", err)
 		return nil, err
 	}
+
+	connector.cdc = cdc
 
 	copyOfConfig := cfg.Elasticsearch
 	printConfiguration(copyOfConfig)
@@ -230,8 +231,6 @@ func newConnector(cf any, mapper Mapper, sinkResponseHandler cdcElasticsearch.Si
 		return nil, err
 	}
 	connector.esClient = esClient
-
-	connector.cdc = cdc
 
 	checkpointCommit := func() {
 		cdc.Commit()
