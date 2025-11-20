@@ -42,6 +42,7 @@ partition:
   partitionsCollection: "partition_assignments"
   rebalanceCheckInterval: 5s
   totalPartition: 1
+  consumerGroup: myConsumerGroup
 
 logger:
   logLevel: "debug"
