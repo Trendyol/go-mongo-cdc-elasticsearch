@@ -41,8 +41,6 @@ func main() {
 
 ### Configuration
 
-Create a `config.yml` file:
-
 ```yaml
 mongodb:
   connection:
