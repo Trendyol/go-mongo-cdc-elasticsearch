@@ -21,6 +21,7 @@ linters:
     - unparam
     - unused
     - whitespace
+    - gosec
   settings:
     funlen:
       lines: 70
