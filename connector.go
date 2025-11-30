@@ -7,9 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/signal"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync/atomic"
+	"syscall"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
 
@@ -47,21 +50,51 @@ type connector struct {
 	bulk                *bulk.Bulk
 	esClient            *elasticsearch.Client
 	sinkResponseHandler cdcElasticsearch.SinkResponseHandler
+	closing             int32
 }
 
 func (c *connector) Start(ctx context.Context) {
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM, syscall.SIGINT, syscall.SIGABRT, syscall.SIGQUIT)
+	defer stop()
+
 	go func() {
 		c.bulk.StartBulk()
 	}()
-	c.cdc.Start(ctx)
+
+	cdcCtx, cdcCancel := context.WithCancel(context.Background())
+	defer cdcCancel()
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			logger.Log.Debug("Shutdown signal received: interrupt, initiating graceful shutdown...")
+			atomic.StoreInt32(&c.closing, 1)
+
+			logger.Log.Debug("Stopped accepting new events, waiting for in-flight events to complete...")
+
+			c.bulk.Close()
+
+			logger.Log.Debug("Bulk closed, committing final checkpoints before closing CDC")
+			cdcCancel()
+		case <-cdcCtx.Done():
+		}
+	}()
+
+	c.cdc.Start(cdcCtx)
 }
 
 func (c *connector) Close() {
-	c.cdc.Close()
+	atomic.StoreInt32(&c.closing, 1)
 	c.bulk.Close()
+	c.cdc.Close()
 }
 
 func (c *connector) listener(ctx *stream.ListenerContext) error {
+	if atomic.LoadInt32(&c.closing) == 1 {
+		logger.Log.Debug("Rejecting new event during shutdown - documentId: %v, partitionId: %d", ctx.Message.DocumentID, ctx.PartitionID)
+		return nil
+	}
+
 	select {
 	case <-ctx.Context.Done():
 		return ctx.Context.Err()

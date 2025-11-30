@@ -3,7 +3,7 @@ module github.com/Trendyol/go-mongo-cdc-elasticsearch
 go 1.25.1
 
 require (
-	github.com/Trendyol/go-mongo-cdc v0.0.0-20251120183520-0957bceb503e
+	github.com/Trendyol/go-mongo-cdc v0.0.0-20251130095434-0bc10d94a13b
 	github.com/elastic/go-elasticsearch/v7 v7.17.10
 	github.com/json-iterator/go v1.1.12
 	github.com/prometheus/client_golang v1.22.0
