@@ -285,6 +285,11 @@ func newConnector(cf any, mapper Mapper, sinkResponseHandler cdcElasticsearch.Si
 		return nil, err
 	}
 
+	eventHandler := &CdcEventHandler{
+		bulk: connector.bulk,
+	}
+	cdc.SetEventHandler(eventHandler)
+
 	return connector, nil
 }
 

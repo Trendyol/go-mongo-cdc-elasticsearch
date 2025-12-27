@@ -26,7 +26,7 @@ import (
 type Bulk struct {
 	sinkResponseHandler          elasticsearch.SinkResponseHandler
 	metricsRecorder              elasticsearch.MetricsRecorder
-	collectionIndexMapping       map[string]string
+	esClient                     *esClient.Client
 	config                       *config.Config
 	batchKeys                    map[string]int
 	cdcCheckpointCommit          func()
@@ -34,10 +34,11 @@ type Bulk struct {
 	batchTicker                  *time.Ticker
 	batchCommitTicker            *time.Ticker
 	isClosed                     chan bool
-	esClient                     *esClient.Client
-	readers                      []*helper.MultiDimByteReader
-	typeName                     []byte
+	collectionIndexMapping       map[string]string
+	rebalancingPartitions        map[int]bool
 	batch                        []BatchItem
+	typeName                     []byte
+	readers                      []*helper.MultiDimByteReader
 	batchIndex                   int
 	batchSize                    int
 	batchSizeLimit               int
@@ -85,6 +86,7 @@ func NewBulk(
 		concurrentRequest:            config.Elasticsearch.ConcurrentRequest,
 		batchKeys:                    make(map[string]int, config.Elasticsearch.BatchSizeLimit),
 		sinkResponseHandler:          sinkResponseHandler,
+		rebalancingPartitions:        make(map[int]bool),
 	}
 
 	if config.Elasticsearch.BatchCommitTickerDuration != nil {
@@ -117,6 +119,11 @@ func (b *Bulk) AddActions(
 	isBootstrap bool,
 ) {
 	b.flushLock.Lock()
+	if b.rebalancingPartitions[partitionID] {
+		logger.Log.Debug("could not add new action to batch while partition is rebalancing - partitionId: %d", partitionID)
+		b.flushLock.Unlock()
+		return
+	}
 	for i, action := range actions {
 		indexName := b.getIndexName(collectionName, action.IndexName)
 		actions[i].IndexName = indexName
@@ -234,6 +241,22 @@ func (b *Bulk) Close() {
 		b.batchCommitTicker.Stop()
 	}
 
+	b.flushMessages()
+}
+
+func (b *Bulk) PreparePartitionRebalancing(partitionID int) {
+	b.flushLock.Lock()
+	b.rebalancingPartitions[partitionID] = true
+	b.flushLock.Unlock()
+}
+
+func (b *Bulk) EndPartitionRebalancing(partitionID int) {
+	b.flushLock.Lock()
+	defer b.flushLock.Unlock()
+	delete(b.rebalancingPartitions, partitionID)
+}
+
+func (b *Bulk) FlushMessages() {
 	b.flushMessages()
 }
 
