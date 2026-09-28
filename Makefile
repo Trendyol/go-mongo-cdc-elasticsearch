@@ -36,6 +36,26 @@ test-integration:
 		attempt=$$((attempt + 1)); \
 	done
 	@echo "All services are ready!"
+	@echo "Waiting for MongoDB sharded cluster to be fully provisioned..."
+	@max_attempts=120; \
+	attempt=0; \
+	while [ $$attempt -lt $$max_attempts ]; do \
+		shard_count=$$(docker exec mongodb-router-test mongosh --quiet --eval 'db.adminCommand({listShards:1}).shards.length' 2>/dev/null || echo 0); \
+		sharded=$$(docker exec mongodb-router-test mongosh --quiet --eval 'printjson(db.getSiblingDB("config").collections.findOne({_id:"testdb.testcollection"}) != null)' 2>/dev/null || echo false); \
+		if [ "$$shard_count" -ge "2" ] && [ "$$sharded" = "true" ]; then \
+			echo "Sharded cluster ready (shards=$$shard_count, testdb.testcollection sharded)."; \
+			break; \
+		fi; \
+		echo "Cluster not ready yet (shards=$$shard_count/2, testdb.testcollection sharded=$$sharded) - waiting..."; \
+		sleep 2; \
+		attempt=$$((attempt + 1)); \
+	done; \
+	if [ $$attempt -ge $$max_attempts ]; then \
+		echo "ERROR: MongoDB sharded cluster was not provisioned in time."; \
+		echo "----- mongodb-setup logs -----"; \
+		docker compose -f test/integration/docker-compose.yml logs mongodb-setup || true; \
+		exit 1; \
+	fi
 	@echo "Running integration tests sequentially to avoid metrics collision..."
 	@cd test/integration && \
 	for test in BasicInsertOperation MultipleInserts UpdateOperation DeleteOperation CustomMapper; do \
